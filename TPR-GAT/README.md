@@ -18,7 +18,7 @@ The input is player coordinate data. The output is three predictions every 15 se
 
 ## Architecture
 
-![Architecture](assets/architecture_diagram.png)
+![Architecture](assets/architecture.png)
 
 The model is a **multi-task Graph Attention Network** with three output heads trained jointly.
 
