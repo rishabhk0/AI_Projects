@@ -40,7 +40,7 @@ Total parameters: ~86,000
 
 **Context vector (7 dims):** score differential, match minute, home/away flag, team's historical tactic distribution (4 values).
 
-**Architecture choices confirmed by ablation study** — see [`docs/ablation_study.docx`](docs/ablation_study.docx):
+**Architecture choices confirmed by ablation study** — see [`docs/ablation_study.docx`](assets/ablation_study.docx):
 - ReLU over ELU: **+8.4 pp** tactic accuracy
 - 4 GAT layers over 3: **+19.3 pp** in ablation
 - 25 m proximity over 15 m: **+2.3 pp** tactic accuracy
