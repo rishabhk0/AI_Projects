@@ -1,7 +1,7 @@
 # TacticalGAT — Football Tactical Pattern Recognition
 
 **Multi-task Graph Attention Network for real-time football tactical analysis**  
-Rishabh Karnawat · Gisma University of Applied Sciences · 2025
+Rishabh Karnawat ·
 
 ---
 
