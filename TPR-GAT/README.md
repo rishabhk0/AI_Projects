@@ -21,7 +21,7 @@ Each match window is converted into a **player interaction graph** — 22 nodes 
 
 ## Architecture
 
-![TacticalGAT Architecture](docs/architecture_diagram.png)
+![TacticalGAT Architecture](assests/architecture_diagram.png)
 
 ```
 Input graph (22 nodes × 5 features)
