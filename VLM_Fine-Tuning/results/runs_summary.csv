@@ -1,0 +1,6 @@
+run_name,lora_rank,train_samples,label_masking,accuracy_pct,compared_against,gate_result
+zero-shot-baseline,n/a (no adapter),n/a,n/a,84.0,n/a,baseline
+run1-rank16,16,300,buggy (unmasked),66.0,zero-shot 84.0,blocked
+run2-rank4,4,300,buggy (unmasked),72.0,run1 66.0,approved (but see results/README.md)
+run3-rank2-tiny,2,20,buggy (unmasked),84.0,run2 72.0,approved (essentially untrained, ~2 optimizer steps)
+run4-rank16-repeat,16,300,buggy (unmasked - see note),68.0,zero-shot 84.0,blocked
