@@ -224,7 +224,7 @@ No ground-truth tactic annotations exist in StatsBomb open data. Expert annotati
   author = {Karnawat, Rishabh},
   title  = {TacticalGAT: Multi-Task Graph Attention Network for Football Tactical Pattern Recognition},
   school = {Gisma University of Applied Sciences},
-  year   = {2025}
+  year   = {2026}
 }
 ```
 
