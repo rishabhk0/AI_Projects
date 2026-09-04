@@ -220,7 +220,7 @@ No ground-truth tactic annotations exist in StatsBomb open data. Expert annotati
 ## Citation
 
 ```bibtex
-@mastersthesis{karnawat2025tacticalgat,
+@mastersthesis{karnawat2026tacticalgat,
   author = {Karnawat, Rishabh},
   title  = {TacticalGAT: Multi-Task Graph Attention Network for Football Tactical Pattern Recognition},
   school = {Gisma University of Applied Sciences},
