@@ -1,0 +1,19 @@
+question,expected_answerable,actual_grounded,generation_failed,correct,answer,model_used,best_distance,latency_ms
+How much does the Growth tier cost per month?,True,True,False,True,The Growth tier costs $99/month.,gemini-3.1-flash-lite,0.541,2753.0
+What is the uptime SLA for the Enterprise tier?,True,True,False,True,The uptime SLA for the Enterprise tier is 99.9% measured monthly.,gemini-3.1-flash-lite,0.392,3398.0
+Does NimbusStack encrypt data at rest?,True,True,False,True,"Yes, NimbusStack encrypts data at rest using AES-256.",gemini-3.1-flash-lite,0.282,2313.0
+Is NimbusStack HIPAA compliant?,True,True,False,True,"No, NimbusStack is not currently HIPAA compliant.",gemini-3.1-flash-lite,0.288,3852.0
+How long is the free trial and does it require a credit card?,True,True,False,True,The free trial is 14 days long and does not require a credit card.,gemini-3.1-flash-lite,0.506,14151.0
+What support response time does the Starter tier get?,True,True,False,True,The Starter tier gets a 48-hour email response time.,gemini-3.1-flash-lite,0.494,2691.0
+Can I edit workflows from the mobile app?,True,True,False,True,"No, workflow editing is only available on desktop/web.",gemini-3.1-flash-lite,0.399,2080.0
+How long is version history retained on the Growth tier?,True,True,False,True,Version history is retained for 90 days on the Growth tier.,gemini-3.1-flash-lite,0.559,1263.0
+What service credit do I get if uptime drops to 97%?,True,True,False,True,"If uptime drops to 97%, you receive a 25% credit.",gemini-3.1-flash-lite,0.410,2790.0
+Which integrations does NimbusStack support natively?,True,True,False,True,"NimbusStack natively integrates with Slack, GitHub, Jira, Google Workspace, and Salesforce.",gemini-3.1-flash-lite,0.260,10234.0
+What's the capital of France?,False,False,False,True,"I am sorry, but the provided context does not contain that information.",gemini-3.5-flash,0.971,10399.0
+Does NimbusStack support quantum computing workflows?,False,False,False,True,The provided context does not contain information about quantum computing workflows.,gemini-3.1-flash-lite,0.265,6922.0
+What is NimbusStack's stock ticker symbol?,False,False,False,True,The provided context does not contain the answer to that question.,gemini-3.1-flash-lite,0.558,2417.0
+Can I integrate NimbusStack with a blockchain wallet?,False,False,False,True,The provided context does not contain information about blockchain wallet integration.,gemini-3.1-flash-lite,0.378,2926.0
+Who is the CEO of NimbusStack and when was the company founded?,False,False,False,True,The provided context does not contain the answer to that question.,gemini-3.1-flash-lite,0.447,16391.0
+What's the best recipe for chocolate chip cookies?,False,False,False,True,"I am sorry, but the provided context does not contain that information.",gemini-3.5-flash,0.972,19053.0
+Does NimbusStack offer a lifetime deal for $99?,False,False,False,True,The context does not state that NimbusStack offers a lifetime deal.,gemini-3.1-flash-lite,0.337,3777.0
+What programming language is the NimbusStack backend written in?,False,False,False,True,The provided context does not contain the answer to that question.,gemini-3.1-flash-lite,0.372,8352.0
