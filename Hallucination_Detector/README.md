@@ -13,7 +13,7 @@ Third in a set of portfolio projects (alongside a grounded RAG chatbot and a VLM
 - `run_eval.py` - runs the full comparison and writes results to `results/`
 - `results/` - the actual numbers, with an honest account of what the data does and doesn't cover (see `results/README.md`)
 
-## The finding, short version
+## The findings
 
 The NLI model caught 100% of wrong and unverifiable claims. On claims that were actually true, it only got it right 28% of the time - it kept flagging correct statements as unsupported. That turned out to be a premise-length problem: this class of NLI model is trained on single-sentence pairs, not paragraphs, and the whole policy document as premise was well outside what it had ever seen. Retrieving just the one relevant sentence instead roughly doubled accuracy on true claims, to 56%, but still fell well short of the LLM judge's 100%.
 
