@@ -1,0 +1,20 @@
+[
+  {"question": "How much does the Growth tier cost per month?", "answerable": true},
+  {"question": "What is the uptime SLA for the Enterprise tier?", "answerable": true},
+  {"question": "Does NimbusStack encrypt data at rest?", "answerable": true},
+  {"question": "Is NimbusStack HIPAA compliant?", "answerable": true},
+  {"question": "How long is the free trial and does it require a credit card?", "answerable": true},
+  {"question": "What support response time does the Starter tier get?", "answerable": true},
+  {"question": "Can I edit workflows from the mobile app?", "answerable": true},
+  {"question": "How long is version history retained on the Growth tier?", "answerable": true},
+  {"question": "What service credit do I get if uptime drops to 97%?", "answerable": true},
+  {"question": "Which integrations does NimbusStack support natively?", "answerable": true},
+  {"question": "What's the capital of France?", "answerable": false},
+  {"question": "Does NimbusStack support quantum computing workflows?", "answerable": false},
+  {"question": "What is NimbusStack's stock ticker symbol?", "answerable": false},
+  {"question": "Can I integrate NimbusStack with a blockchain wallet?", "answerable": false},
+  {"question": "Who is the CEO of NimbusStack and when was the company founded?", "answerable": false},
+  {"question": "What's the best recipe for chocolate chip cookies?", "answerable": false},
+  {"question": "Does NimbusStack offer a lifetime deal for $99?", "answerable": false},
+  {"question": "What programming language is the NimbusStack backend written in?", "answerable": false}
+]
