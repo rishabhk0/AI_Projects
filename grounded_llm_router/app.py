@@ -53,6 +53,14 @@ if "router" not in st.session_state or st.session_state.get("_key") != api_key_i
     st.session_state.router = GroundedRouter(api_key=api_key_input or None)
     st.session_state._key = api_key_input
 
+    # Auto-ingest on first load or after a restart, so visitors don't need
+    # to know about the sidebar button — the Chroma store is ephemeral on
+    # Streamlit Cloud and resets on every reboot.
+    existing = st.session_state.router.collection.get()["ids"]
+    if not existing:
+        with st.spinner("Setting up knowledge base..."):
+            ingest()
+
 if not list(DOCS_DIR.glob("*.md")):
     st.warning("No docs found in docs/. Add some .md files and click 'Re-ingest documents'.")
 
