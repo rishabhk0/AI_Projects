@@ -1,24 +1,11 @@
 """
 Grounded LLM Router
 --------------------
-A cost-aware RAG chatbot that:
-  1. Retrieves context from a document corpus
-  2. Checks retrieval confidence and refuses outright when nothing relevant
-     enough came back
-  3. Even when retrieval looks confident, checks the generated answer itself
-     for admission-of-not-knowing language (see is_refusal) — a single
-     distance threshold cannot tell "topically close but factually absent"
-     apart from "actually answerable," so this second check catches what
-     the first one misses
-  4. Routes answerable queries to a cheap or strong model based on
-     complexity and retrieval confidence
-  5. Logs every query (cost, model, confidence, grounded/refused, latency)
-     to SQLite
-
-Model names in the free tier get deprecated and rate-limited without much
-warning. generate() retries on failure using the wait time the API itself
-suggests, and CHEAP_MODEL / STRONG_MODEL are meant to be checked against
-list_models.py before a real run, not trusted blindly.
+Same core pipeline as before, extended with:
+  - per-document categories, so retrieval (and the UI) can be scoped to a topic
+  - ingest_text(), for adding user-uploaded documents at runtime, not just
+    the fixed docs/ folder at startup
+  - configurable k and refusal threshold per query, instead of fixed globals
 """
 
 import glob
@@ -39,33 +26,12 @@ DOCS_DIR = BASE_DIR / "docs"
 CHROMA_DIR = BASE_DIR / "chroma_store"
 DB_PATH = BASE_DIR / "logs.sqlite"
 
-# --- Config -------------------------------------------------------------
-
-# Distance below which retrieval counts as "confident enough to answer."
-# Chroma returns L2 distance (lower = closer). Re-tune this against your
-# own corpus using eval.py — 1.05 was tuned against the NimbusStack sample
-# docs and won't necessarily transfer.
 REFUSAL_DISTANCE_THRESHOLD = 1.05
-
-# Above this word count, or when retrieval confidence is borderline, route
-# to the strong model instead of the cheap one.
 COMPLEXITY_WORD_THRESHOLD = 18
-
-# Last confirmed working against a free-tier key (see list_models.py to
-# re-check — Gemini's free-tier lineup changes faster than this file does).
 CHEAP_MODEL = "gemini-3.1-flash-lite"
 STRONG_MODEL = "gemini-3.5-flash"
+MODEL_COST_PER_1K_TOKENS = {CHEAP_MODEL: 0.0001, STRONG_MODEL: 0.0003}
 
-# Rough per-1K-token USD estimates, for the cost figure shown in the UI —
-# not billed anywhere, just a display number.
-MODEL_COST_PER_1K_TOKENS = {
-    CHEAP_MODEL: 0.0001,
-    STRONG_MODEL: 0.0003,
-}
-
-# Phrases that mean "the model tried to answer and came up empty" — used
-# as a second check after generation, since retrieval distance alone
-# missed several of these in testing (see README's Results section).
 REFUSAL_PHRASES = [
     "don't have enough information", "doesn't contain", "does not contain",
     "not mentioned", "no information", "cannot find", "can't find",
@@ -79,13 +45,9 @@ def is_refusal(text: str) -> bool:
 
 
 def parse_retry_delay(error_str: str, default: float = 20.0) -> float:
-    """Pull the server's own suggested wait time out of a 429 message
-    instead of guessing a fixed backoff."""
     match = re.search(r"retry in (\d+\.?\d*)s", error_str)
     return float(match.group(1)) + 2 if match else default
 
-
-# --- Setup ----------------------------------------------------------------
 
 def get_chroma_collection():
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
@@ -103,15 +65,9 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS query_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            query TEXT,
-            grounded INTEGER,
-            best_distance REAL,
-            model_used TEXT,
-            est_cost_usd REAL,
-            latency_ms REAL,
-            answer TEXT,
-            sources TEXT
+            timestamp TEXT, query TEXT, grounded INTEGER, best_distance REAL,
+            model_used TEXT, est_cost_usd REAL, latency_ms REAL, answer TEXT,
+            sources TEXT, category TEXT
         )
         """
     )
@@ -119,11 +75,7 @@ def init_db():
     conn.close()
 
 
-# --- Ingestion --------------------------------------------------------
-
 def chunk_text(text: str, max_chars: int = 600) -> list[str]:
-    """Paragraph-aware chunker. Fine for a handful of short docs — swap
-    for a token-aware splitter if the corpus grows much past this."""
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     chunks, current = [], ""
     for p in paragraphs:
@@ -138,29 +90,46 @@ def chunk_text(text: str, max_chars: int = 600) -> list[str]:
     return chunks
 
 
-def ingest() -> int:
-    """Read every .md file in docs/, chunk it, and load it into Chroma."""
+def ingest_text(filename: str, text: str, category: str, replace_existing: bool = True) -> int:
+    """Chunk and add one document's text to the collection, tagged with a
+    category so it can be filtered on later. Used both for the built-in
+    docs/ folder and for anything a user uploads at runtime."""
     collection = get_chroma_collection()
-    existing_ids = collection.get()["ids"]
-    if existing_ids:
-        collection.delete(ids=existing_ids)
 
-    ids, documents, metadatas = [], [], []
+    if replace_existing:
+        existing = collection.get(where={"source": filename})
+        if existing["ids"]:
+            collection.delete(ids=existing["ids"])
+
+    chunks = chunk_text(text)
+    if not chunks:
+        return 0
+    ids = [f"{filename}-{i}" for i in range(len(chunks))]
+    metadatas = [{"source": filename, "category": category} for _ in chunks]
+    collection.add(ids=ids, documents=chunks, metadatas=metadatas)
+    return len(chunks)
+
+
+def ingest() -> int:
+    """Load every .md file in docs/ as a built-in document, category = the
+    filename stem (pricing, security, sla, ...)."""
+    total = 0
     doc_paths = sorted(glob.glob(str(DOCS_DIR / "*.md")))
     for filepath in doc_paths:
         filename = os.path.basename(filepath)
+        category = Path(filename).stem
         text = Path(filepath).read_text(encoding="utf-8")
-        for i, chunk in enumerate(chunk_text(text)):
-            ids.append(f"{filename}-{i}")
-            documents.append(chunk)
-            metadatas.append({"source": filename})
-
-    collection.add(ids=ids, documents=documents, metadatas=metadatas)
-    print(f"Ingested {len(documents)} chunks from {len(doc_paths)} docs.")
-    return len(documents)
+        total += ingest_text(filename, text, category)
+    print(f"Ingested {total} chunks from {len(doc_paths)} built-in docs.")
+    return total
 
 
-# --- Core pipeline ------------------------------------------------------
+def list_categories() -> list[str]:
+    collection = get_chroma_collection()
+    data = collection.get(include=["metadatas"])
+    cats = sorted({m.get("category", "uploaded") for m in data["metadatas"]})
+    return cats
+
 
 class GroundedRouter:
     def __init__(self, api_key: str | None = None):
@@ -171,36 +140,35 @@ class GroundedRouter:
             genai.configure(api_key=key)
         self.has_llm = bool(key)
 
-    def retrieve(self, query: str, k: int = 3):
-        results = self.collection.query(query_texts=[query], n_results=k)
+    def retrieve(self, query: str, k: int = 3, category: str | None = None):
+        where = None
+        if category and category != "All":
+            where = {"category": category}
+        results = self.collection.query(query_texts=[query], n_results=k, where=where)
         docs = results["documents"][0] if results["documents"] else []
         metas = results["metadatas"][0] if results["metadatas"] else []
         dists = results["distances"][0] if results["distances"] else []
         return list(zip(docs, metas, dists))
 
-    def choose_model(self, query: str, best_distance: float) -> str:
+    def choose_model(self, query: str, best_distance: float, threshold: float) -> str:
         word_count = len(query.split())
-        borderline = best_distance > (REFUSAL_DISTANCE_THRESHOLD * 0.7)
-        if word_count > COMPLEXITY_WORD_THRESHOLD or borderline:
-            return STRONG_MODEL
-        return CHEAP_MODEL
+        borderline = best_distance > (threshold * 0.7)
+        return STRONG_MODEL if (word_count > COMPLEXITY_WORD_THRESHOLD or borderline) else CHEAP_MODEL
 
     def generate(self, query: str, context_chunks: list[str], model_name: str,
                  max_retries: int = 4) -> str:
         if not self.has_llm:
             return (
-                "[LLM not configured — set GEMINI_API_KEY] Based on retrieved "
+                "[LLM not configured -- set GEMINI_API_KEY] Based on retrieved "
                 f"context: {context_chunks[0][:200]}..."
             )
-
         context = "\n\n---\n\n".join(context_chunks)
         prompt = (
             "Answer the user's question using ONLY the context below. "
-            "If the context does not contain the answer, say so explicitly — "
+            "If the context does not contain the answer, say so explicitly -- "
             "do not use outside knowledge.\n\n"
             f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
         )
-
         last_error = None
         for attempt in range(max_retries):
             try:
@@ -212,47 +180,38 @@ class GroundedRouter:
                 wait = parse_retry_delay(str(e))
                 print(f"    retry {attempt + 1}/{max_retries}, waiting {wait:.0f}s: {str(e)[:80]}")
                 time.sleep(wait)
-
         print(f"    generation failed after {max_retries} attempts: {str(last_error)[:150]}")
         return "GENERATION_FAILED"
 
-    def answer(self, query: str) -> dict:
+    def answer(self, query: str, k: int = 3, category: str | None = None,
+               distance_threshold: float | None = None) -> dict:
+        threshold = distance_threshold if distance_threshold is not None else REFUSAL_DISTANCE_THRESHOLD
         start = time.time()
-        retrieved = self.retrieve(query)
+        retrieved = self.retrieve(query, k=k, category=category)
 
         if not retrieved:
             grounded, best_distance = False, float("inf")
         else:
             best_distance = min(d for _, _, d in retrieved)
-            grounded = best_distance <= REFUSAL_DISTANCE_THRESHOLD
+            grounded = best_distance <= threshold
 
         if not grounded:
             result = {
-                "query": query,
-                "grounded": False,
-                "generation_failed": False,
-                "answer": (
-                    "I don't have enough information in the knowledge base to "
-                    "answer that confidently, so I'm not going to guess."
-                ),
-                "sources": [],
-                "model_used": None,
-                "best_distance": best_distance,
-                "est_cost_usd": 0.0,
-                "latency_ms": (time.time() - start) * 1000,
+                "query": query, "grounded": False, "generation_failed": False,
+                "answer": "I don't have enough information in the knowledge base to answer that confidently, so I'm not going to guess.",
+                "sources": [], "model_used": None, "best_distance": best_distance,
+                "est_cost_usd": 0.0, "latency_ms": (time.time() - start) * 1000,
+                "category": category or "All",
             }
             self._log(result)
             return result
 
         context_chunks = [doc for doc, _, _ in retrieved]
         sources = sorted({meta["source"] for _, meta, _ in retrieved})
-        model_name = self.choose_model(query, best_distance)
+        model_name = self.choose_model(query, best_distance, threshold)
         answer_text = self.generate(query, context_chunks, model_name)
 
         generation_failed = answer_text == "GENERATION_FAILED"
-        # A retrieval-confident query can still come back ungrounded if the
-        # model's own answer admits it didn't find the fact — catch that
-        # here rather than trusting the distance threshold alone.
         actually_grounded = grounded and not generation_failed and not is_refusal(answer_text)
 
         approx_tokens = (len(query) + sum(len(c) for c in context_chunks)) / 4
@@ -261,15 +220,10 @@ class GroundedRouter:
         )
 
         result = {
-            "query": query,
-            "grounded": actually_grounded,
-            "generation_failed": generation_failed,
-            "answer": answer_text,
-            "sources": sources,
-            "model_used": model_name,
-            "best_distance": best_distance,
-            "est_cost_usd": est_cost,
-            "latency_ms": (time.time() - start) * 1000,
+            "query": query, "grounded": actually_grounded, "generation_failed": generation_failed,
+            "answer": answer_text, "sources": sources, "model_used": model_name,
+            "best_distance": best_distance, "est_cost_usd": est_cost,
+            "latency_ms": (time.time() - start) * 1000, "category": category or "All",
         }
         self._log(result)
         return result
@@ -279,18 +233,13 @@ class GroundedRouter:
         conn.execute(
             """INSERT INTO query_log
                (timestamp, query, grounded, best_distance, model_used,
-                est_cost_usd, latency_ms, answer, sources)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                est_cost_usd, latency_ms, answer, sources, category)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                datetime.now(timezone.utc).isoformat(),
-                result["query"],
-                int(bool(result["grounded"])),
-                result["best_distance"],
-                result["model_used"],
-                result["est_cost_usd"],
-                result["latency_ms"],
-                result["answer"],
-                json.dumps(result["sources"]),
+                datetime.now(timezone.utc).isoformat(), result["query"],
+                int(bool(result["grounded"])), result["best_distance"],
+                result["model_used"], result["est_cost_usd"], result["latency_ms"],
+                result["answer"], json.dumps(result["sources"]), result["category"],
             ),
         )
         conn.commit()
