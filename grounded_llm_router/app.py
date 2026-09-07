@@ -87,6 +87,33 @@ section[data-testid="stSidebar"] * { font-family: 'Source Serif 4', Georgia, ser
 
 [data-testid="stMetricValue"] { color: #E8E4DA; }
 [data-testid="stMetricLabel"] { color: #9A9484; }
+
+/* Fix: expander header and file uploader were inheriting broad button/font
+   rules meant for the main Ask/Rebuild buttons, causing their internal
+   label + icon to overlap instead of sitting side by side. */
+
+[data-testid="stExpander"] summary {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    color: #E8E4DA !important;
+}
+[data-testid="stExpander"] summary svg { flex-shrink: 0; }
+
+[data-testid="stFileUploaderDropzone"] {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    padding: 12px !important;
+}
+[data-testid="stFileUploaderDropzone"] button {
+    position: static !important;
+    margin-top: 4px !important;
+}
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    position: static !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -167,7 +194,7 @@ with st.sidebar:
             full_df.to_csv(csv_buffer, index=False)
             st.download_button("Export full log (CSV)", csv_buffer.getvalue(), "query_log.csv", "text/csv")
         else:
-            st.markdown("<div style='color:#8A8577; font-size:12px;'>Nothing recorded yet.</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color:#9A9484; font-size:12px;'>Nothing recorded yet.</div>", unsafe_allow_html=True)
 
 
 st.markdown("""
