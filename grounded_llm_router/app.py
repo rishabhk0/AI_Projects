@@ -23,7 +23,7 @@ html, body, [class*="css"] { font-family: 'Source Serif 4', Georgia, serif; }
 section[data-testid="stSidebar"] { background-color: #221F1B; border-right: 1px solid #3A362C; }
 section[data-testid="stSidebar"] * { font-family: 'Source Serif 4', Georgia, serif; color: #E8E4DA; }
 
-.masthead { border-bottom: 2px solid #E8E4DA; padding-bottom: 14px; margin-bottom: 6px; }
+.masthead { padding-bottom: 14px; margin-bottom: 6px; }
 .masthead h1 { font-size: 26px; font-weight: 600; margin: 0; letter-spacing: 0.01em; color: #E8E4DA; }
 .masthead .rule-note { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9A9484; margin-top: 4px; }
 
