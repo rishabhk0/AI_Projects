@@ -176,23 +176,19 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<div class='section-label'>ledger — last 10</div>", unsafe_allow_html=True)
+    category_count = len(list_categories())
+    total_queries = 0
     if DB_PATH.exists():
-        conn = sqlite3.connect(DB_PATH)
-        log_df = pd.read_sql_query(
-            "SELECT timestamp, query, grounded, category FROM query_log ORDER BY id DESC LIMIT 10", conn
-        )
-        conn.close()
-        if len(log_df):
-            for _, r in log_df.iterrows():
-                mark = "grounded" if r["grounded"] else "refused"
-                mark_class = "" if r["grounded"] else "refused"
-                short_q = (r["query"][:26] + "…") if len(r["query"]) > 26 else r["query"]
-                time_short = r["timestamp"][11:16] if isinstance(r["timestamp"], str) else ""
-                st.markdown(
-                    f"<div class='ledger-row'><span>{time_short} — {short_q}</span>"
-                    f"<span class='status-mark {mark_class}'>{mark}</span></div>",
-                    unsafe_allow_html=True,
-                )
+    conn = sqlite3.connect(DB_PATH)
+    total_queries = conn.execute("SELECT COUNT(*) FROM query_log").fetchone()[0]
+    conn.close()
+
+    st.markdown(f"""
+    <div class="masthead">
+    <h1>NimbusStack Support Log</h1>
+    <div class="rule-note">{category_count} topics indexed · {total_queries} queries logged</div>
+    </div>
+     """, unsafe_allow_html=True)
 
             grounded_rate = log_df["grounded"].mean() * 100
             c1, c2 = st.columns(2)
