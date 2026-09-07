@@ -114,6 +114,18 @@ section[data-testid="stSidebar"] * { font-family: 'Source Serif 4', Georgia, ser
 [data-testid="stFileUploaderDropzoneInstructions"] {
     position: static !important;
 }
+
+/* Fix: the global serif font-family override above was also applying to
+   Streamlit's icon elements. Those icons work by rendering an icon *name*
+   (e.g. "arrow_right", "upload") in a special ligature font that turns the
+   text into a small picture -- overriding that font left the literal name
+   showing as plain text, overlapping the real label next to it. This
+   restores the icon font specifically for icon elements only. */
+[data-testid="stIconMaterial"],
+span[class*="material-symbols"],
+span[class*="material-icons"] {
+    font-family: 'Material Symbols Rounded', 'Material Icons' !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
