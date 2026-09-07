@@ -1,154 +1,47 @@
+import io
 import os
 import sqlite3
-from datetime import datetime
 
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-from core import GroundedRouter, ingest, DB_PATH, DOCS_DIR
+from core import GroundedRouter, ingest, ingest_text, list_categories, DB_PATH, DOCS_DIR
 
 load_dotenv()
 
-st.set_page_config(page_title="NimbusStack Query Console", page_icon="◈", layout="wide")
+st.set_page_config(page_title="NimbusStack Support Log", page_icon="—", layout="wide")
 
-# ---------------------------------------------------------------------------
-# Style
-# ---------------------------------------------------------------------------
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'Space Grotesk', sans-serif;
-}
-
-.stApp {
-    background-color: #14171C;
-    color: #E8E6E1;
-}
-
-section[data-testid="stSidebar"] {
-    background-color: #1A1E26;
-    border-right: 1px solid #2A2F3A;
-}
-
-.console-header {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
-    margin-bottom: 4px;
-}
-.console-header h1 {
-    font-size: 28px;
-    font-weight: 700;
-    margin: 0;
-    color: #E8E6E1;
-}
-.console-header .tag {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: #6E7686;
-    letter-spacing: 0.02em;
-}
-.console-sub {
-    color: #8B92A0;
-    font-size: 15px;
-    max-width: 640px;
-    line-height: 1.5;
-    margin-bottom: 28px;
-}
-
-.stTextInput input {
-    background-color: #1C2029;
-    border: 1px solid #2A2F3A;
-    color: #E8E6E1;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
-    border-radius: 3px;
-}
-.stTextInput input:focus {
-    border-color: #4FD1C5;
-    box-shadow: none;
-}
-
-.stButton button {
-    background-color: #4FD1C5;
-    color: #0F1115;
-    border: none;
-    border-radius: 3px;
-    font-weight: 500;
-    padding: 0.5rem 1.4rem;
-}
-.stButton button:hover {
-    background-color: #6EE0D5;
-    color: #0F1115;
-}
-
-.readout {
-    border: 1px solid #2A2F3A;
-    border-radius: 4px;
-    padding: 18px 20px;
-    margin-top: 18px;
-    background-color: #1C2029;
-}
-.readout.grounded { border-left: 3px solid #4FD1C5; }
-.readout.refused { border-left: 3px solid #E8965A; }
-.readout-answer {
-    font-size: 16px;
-    line-height: 1.55;
-    margin-bottom: 14px;
-}
-.readout-meta {
-    display: flex;
-    gap: 24px;
-    flex-wrap: wrap;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: #8B92A0;
-    border-top: 1px solid #2A2F3A;
-    padding-top: 10px;
-}
-.readout-meta span b {
-    color: #C7CCD6;
-    font-weight: 500;
-}
-
-.log-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-}
-.log-table th {
-    text-align: left;
-    color: #6E7686;
-    font-weight: 500;
-    padding: 6px 8px;
-    border-bottom: 1px solid #2A2F3A;
-}
-.log-table td {
-    padding: 6px 8px;
-    border-bottom: 1px solid #22262F;
-    color: #C7CCD6;
-}
-.log-dot {
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    margin-right: 6px;
-}
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
+html, body, [class*="css"] { font-family: 'Source Serif 4', Georgia, serif; }
+.stApp { background-color: #F5F3ED; color: #1C1A16; }
+section[data-testid="stSidebar"] { background-color: #EFEDE5; border-right: 1px solid #D8D4C8; }
+section[data-testid="stSidebar"] * { font-family: 'Source Serif 4', Georgia, serif; }
+.masthead { border-bottom: 2px solid #1C1A16; padding-bottom: 14px; margin-bottom: 6px; }
+.masthead h1 { font-size: 26px; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+.masthead .rule-note { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8A8577; margin-top: 4px; }
+.lede { font-size: 16px; line-height: 1.6; max-width: 640px; color: #3A362E; margin: 20px 0 28px 0; }
+.stTextInput input { background-color: transparent; border: none; border-bottom: 1px solid #1C1A16; border-radius: 0; color: #1C1A16; font-family: 'Source Serif 4', Georgia, serif; font-size: 17px; padding: 6px 2px; }
+.stTextInput input:focus { box-shadow: none; border-bottom: 2px solid #1C1A16; }
+.stButton button { background-color: transparent; color: #1C1A16; border: 1px solid #1C1A16; border-radius: 0; font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.04em; padding: 0.4rem 1.1rem; box-shadow: none; }
+.stButton button:hover { background-color: #1C1A16; color: #F5F3ED; border-color: #1C1A16; }
+.entry { border-top: 1px solid #D8D4C8; padding: 20px 0; }
+.entry-no { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8A8577; }
+.entry-q { font-style: italic; color: #57523F; margin: 4px 0 10px 0; font-size: 15px; }
+.entry-a { font-size: 17px; line-height: 1.6; margin-bottom: 10px; }
+.entry-a.refused { color: #7A2E1F; }
+.entry-meta { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8A8577; }
+.entry-meta .status.grounded { color: #1C1A16; font-weight: 500; }
+.entry-meta .status.refused { color: #7A2E1F; font-weight: 500; }
+.ledger-row { display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 7px 0; border-bottom: 1px solid #E2DFD4; color: #57523F; }
+.ledger-row .status-mark.refused { color: #7A2E1F; }
+.section-label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8A8577; letter-spacing: 0.05em; margin: 20px 0 8px 0; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------------------
-# Cached, process-level resource — loads the embedding model and Chroma
-# collection once per server process, not once per visitor session. This is
-# the fix for slow responses: without it, every new session reloaded the
-# sentence-transformer model from scratch on a shared, CPU-only instance.
-# ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def get_router(api_key: str):
     router = GroundedRouter(api_key=api_key or None)
@@ -157,108 +50,127 @@ def get_router(api_key: str):
     return router
 
 
-# ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "entry_count" not in st.session_state:
+    st.session_state.entry_count = 0
+
 with st.sidebar:
-    st.markdown("<div style='font-family: JetBrains Mono, monospace; font-size: 12px; color: #6E7686; letter-spacing: 0.05em; margin-bottom: 10px;'>CONFIG</div>", unsafe_allow_html=True)
-    api_key_input = st.text_input(
-        "Gemini API key",
-        type="password",
-        value=os.environ.get("GEMINI_API_KEY", ""),
-        help="Free at aistudio.google.com",
-    )
+    st.markdown("<div class='section-label'>configuration</div>", unsafe_allow_html=True)
+    api_key_input = st.text_input("Gemini API key", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
+    router = get_router(api_key_input)
 
-    if st.button("Rebuild index"):
-        with st.spinner("Re-embedding docs/*.md"):
+    if st.button("Rebuild built-in index"):
+        with st.spinner("Re-reading docs/*.md"):
             n = ingest()
-        st.success(f"{n} chunks indexed")
+        st.success(f"{n} passages indexed")
 
-    st.markdown("<hr style='border-color: #2A2F3A; margin: 20px 0;'>", unsafe_allow_html=True)
-    st.markdown("<div style='font-family: JetBrains Mono, monospace; font-size: 12px; color: #6E7686; letter-spacing: 0.05em; margin-bottom: 10px;'>RECENT QUERIES</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-label'>search scope</div>", unsafe_allow_html=True)
+    all_categories = ["All"] + list_categories()
+    scope = st.selectbox("Category", all_categories, label_visibility="collapsed")
 
+    with st.expander("Advanced retrieval settings"):
+        top_k = st.slider("Passages retrieved per query", 1, 8, 3)
+        threshold_override = st.slider(
+            "Refusal distance threshold", 0.5, 1.5, 1.05, 0.05,
+            help="Lower = stricter (refuses more often). Higher = more lenient.",
+        )
+
+    st.markdown("<div class='section-label'>add documents</div>", unsafe_allow_html=True)
+    uploaded = st.file_uploader("Upload .md or .txt files", type=["md", "txt"], accept_multiple_files=True)
+    if uploaded and st.button("Add to knowledge base"):
+        total_chunks = 0
+        for f in uploaded:
+            text = f.read().decode("utf-8", errors="ignore")
+            category = f"uploaded: {f.name}"
+            total_chunks += ingest_text(f.name, text, category)
+        st.success(f"Added {len(uploaded)} file(s), {total_chunks} chunks. New categories are now searchable.")
+        st.rerun()
+
+    st.markdown("<div class='section-label'>ledger — last 10</div>", unsafe_allow_html=True)
     if DB_PATH.exists():
         conn = sqlite3.connect(DB_PATH)
         log_df = pd.read_sql_query(
-            "SELECT timestamp, query, grounded, model_used, "
-            "ROUND(est_cost_usd, 6) as cost, ROUND(latency_ms, 0) as latency_ms "
-            "FROM query_log ORDER BY id DESC LIMIT 12",
-            conn,
+            "SELECT timestamp, query, grounded, category FROM query_log ORDER BY id DESC LIMIT 10", conn
         )
         conn.close()
-
         if len(log_df):
-            rows_html = ""
             for _, r in log_df.iterrows():
-                dot_color = "#4FD1C5" if r["grounded"] else "#E8965A"
-                short_q = (r["query"][:38] + "…") if len(r["query"]) > 38 else r["query"]
-                time_short = r["timestamp"][11:19] if isinstance(r["timestamp"], str) else ""
-                rows_html += f"""<tr>
-                    <td><span class="log-dot" style="background-color:{dot_color}"></span>{time_short}</td>
-                    <td>{short_q}</td>
-                </tr>"""
-            st.markdown(f"""
-                <table class="log-table">
-                    <tr><th>time</th><th>query</th></tr>
-                    {rows_html}
-                </table>
-            """, unsafe_allow_html=True)
+                mark = "grounded" if r["grounded"] else "refused"
+                mark_class = "" if r["grounded"] else "refused"
+                short_q = (r["query"][:26] + "…") if len(r["query"]) > 26 else r["query"]
+                time_short = r["timestamp"][11:16] if isinstance(r["timestamp"], str) else ""
+                st.markdown(
+                    f"<div class='ledger-row'><span>{time_short} — {short_q}</span>"
+                    f"<span class='status-mark {mark_class}'>{mark}</span></div>",
+                    unsafe_allow_html=True,
+                )
 
             grounded_rate = log_df["grounded"].mean() * 100
-            st.markdown(f"<div style='margin-top:14px; font-family: JetBrains Mono, monospace; font-size: 12px; color: #6E7686;'>grounded rate, last {len(log_df)}: <b style=\"color:#C7CCD6\">{grounded_rate:.0f}%</b></div>", unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            c1.metric("Grounded", f"{grounded_rate:.0f}%")
+            c2.metric("Entries", len(log_df))
+
+            full_conn = sqlite3.connect(DB_PATH)
+            full_df = pd.read_sql_query("SELECT * FROM query_log ORDER BY id DESC", full_conn)
+            full_conn.close()
+            csv_buffer = io.StringIO()
+            full_df.to_csv(csv_buffer, index=False)
+            st.download_button("Export full log (CSV)", csv_buffer.getvalue(), "query_log.csv", "text/csv")
         else:
-            st.markdown("<div style='color:#6E7686; font-size:13px;'>No queries yet.</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div style='color:#6E7686; font-size:13px;'>No queries yet.</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color:#8A8577; font-size:12px;'>Nothing recorded yet.</div>", unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 st.markdown("""
-<div class="console-header">
-    <h1>NimbusStack Query Console</h1>
-    <span class="tag">v1 · pricing · security · sla · features</span>
+<div class="masthead">
+    <h1>NimbusStack Support Log</h1>
+    <div class="rule-note">pricing · security · sla · features · integrations · admin · onboarding · roadmap</div>
 </div>
-<div class="console-sub">
-    Answers are checked against the product docs before anything is shown.
-    If nothing in the docs backs up an answer closely enough, you'll get a
-    refusal instead of a guess — try an unrelated question to see it happen.
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class="lede">
+Ask anything about NimbusStack. Narrow the search scope in the sidebar to a
+specific topic, or leave it on "All" to search everything, including any
+documents you've uploaded. Every answer is checked against the source docs
+first -- if nothing backs it up closely enough, it's logged as a refusal
+rather than a guess.
 </div>
 """, unsafe_allow_html=True)
 
 if not list(DOCS_DIR.glob("*.md")):
-    st.warning("No docs found in docs/. Add .md files and rebuild the index from the sidebar.")
+    st.warning("No built-in source documents found in docs/.")
 
-query = st.text_input(
-    "query",
-    placeholder="e.g. what's the uptime SLA for the growth tier",
-    label_visibility="collapsed",
-)
-ask = st.button("Run query")
+query = st.text_input("query", placeholder="what's the uptime SLA for the growth tier", label_visibility="collapsed")
+ask = st.button("Ask")
 
 if ask and query:
-    router = get_router(api_key_input)
-    with st.spinner("Checking docs and querying model…"):
-        result = router.answer(query)
+    with st.spinner("Checking the record…"):
+        result = router.answer(query, k=top_k, category=scope, distance_threshold=threshold_override)
+    st.session_state.entry_count += 1
+    st.session_state.history.insert(0, {
+        "n": st.session_state.entry_count, "query": query, "result": result,
+    })
 
-    css_class = "grounded" if result["grounded"] else "refused"
-    status_label = "GROUNDED" if result["grounded"] else "REFUSED"
-    status_color = "#4FD1C5" if result["grounded"] else "#E8965A"
-
+for item in st.session_state.history:
+    result = item["result"]
+    css_class = "" if result["grounded"] else "refused"
+    status_word = "grounded" if result["grounded"] else "refused"
+    model_str = result["model_used"] or "—"
     sources_str = ", ".join(result["sources"]) if result["sources"] else "none"
-    model_str = result["model_used"] or "n/a"
 
     st.markdown(f"""
-    <div class="readout {css_class}">
-        <div class="readout-answer">{result['answer']}</div>
-        <div class="readout-meta">
-            <span style="color:{status_color}; font-weight:500;">{status_label}</span>
-            <span>model: <b>{model_str}</b></span>
-            <span>distance: <b>{result['best_distance']:.3f}</b></span>
-            <span>cost: <b>${result['est_cost_usd']:.6f}</b></span>
-            <span>latency: <b>{result['latency_ms']:.0f}ms</b></span>
-            <span>sources: <b>{sources_str}</b></span>
+    <div class="entry">
+        <div class="entry-no">entry {item['n']:03d} · scope: {result['category']}</div>
+        <div class="entry-q">{item['query']}</div>
+        <div class="entry-a {css_class}">{result['answer']}</div>
+        <div class="entry-meta">
+            <span class="status {css_class}">{status_word}</span>
+            &nbsp;·&nbsp; model {model_str}
+            &nbsp;·&nbsp; distance {result['best_distance']:.3f}
+            &nbsp;·&nbsp; cost ${result['est_cost_usd']:.6f}
+            &nbsp;·&nbsp; {result['latency_ms']:.0f}ms
+            &nbsp;·&nbsp; sources: {sources_str}
         </div>
     </div>
     """, unsafe_allow_html=True)
