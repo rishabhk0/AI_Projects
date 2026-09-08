@@ -92,8 +92,8 @@ span[class*="material-icons"] {
 
 
 @st.cache_resource(show_spinner=False)
-def get_router(api_key: str):
-    router = GroundedRouter(api_key=api_key or None)
+def get_router():
+    router = GroundedRouter(api_key=os.environ.get("GEMINI_API_KEY"))
     if not router.collection.get()["ids"]:
         ingest()
     return router
@@ -128,9 +128,7 @@ with st.sidebar:
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='section-label'>configuration</div>", unsafe_allow_html=True)
-    api_key_input = st.text_input("Gemini API key", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
-    router = get_router(api_key_input)
+    router = get_router()
 
     if st.button("Rebuild built-in index"):
         with st.spinner("Re-reading docs/*.md"):
