@@ -1,0 +1,49 @@
+name: Keep Streamlit App Awake
+
+# Streamlit Community Cloud puts free-tier apps to sleep after 12 hours with
+# no visitors. A plain HTTP request doesn't count as a visit -- Streamlit
+# serves a static HTML shell to simple GET requests without actually
+# starting the app, so this uses a real headless browser (Playwright) to
+# visit the page and click the wake-up button if the app is asleep.
+#
+# Runs every 6 hours -- comfortably under the 12-hour sleep threshold, with
+# margin in case a run gets delayed or skipped.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}  # lets you trigger it manually from the Actions tab
+
+jobs:
+  wake-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Visit the app and wake it if sleeping
+        run: |
+          python3 << 'EOF'
+          from playwright.sync_api import sync_playwright
+
+          APP_URL = "https://nimbusstack-router.streamlit.app"
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              page.goto(APP_URL, wait_until="domcontentloaded", timeout=120_000)
+              page.wait_for_timeout(5_000)
+
+              wake_button = page.get_by_role("button", name="Yes, get this app back up!")
+              if wake_button.count() > 0:
+                  print("App was asleep -- clicking wake button")
+                  wake_button.click()
+                  page.wait_for_timeout(60_000)
+                  print("Wake triggered")
+              else:
+                  print("App was already awake")
+
+              browser.close()
+          EOF
