@@ -6,10 +6,15 @@ from dotenv import load_dotenv
 from core import (
     GroundedRouter, ingest, ingest_text, list_categories,
     create_conversation, list_conversations, get_messages, add_message,
-    export_all_messages_csv, DOCS_DIR,
+    export_all_messages_csv, init_db, DOCS_DIR,
 )
 
 load_dotenv()
+
+# Must run before anything touches the database -- list_conversations() is
+# called in the sidebar before GroundedRouter() is ever constructed, so
+# relying on GroundedRouter.__init__() to create the tables was too late.
+init_db()
 
 st.set_page_config(page_title="NimbusStack", page_icon="—", layout="wide")
 
