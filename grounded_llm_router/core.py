@@ -1,11 +1,10 @@
 """
 Grounded LLM Router
 --------------------
-Same core pipeline as before, extended with:
-  - per-document categories, so retrieval (and the UI) can be scoped to a topic
-  - ingest_text(), for adding user-uploaded documents at runtime, not just
-    the fixed docs/ folder at startup
-  - configurable k and refusal threshold per query, instead of fixed globals
+Same RAG pipeline as before (retrieval, grounding check, cost-aware model
+routing), now paired with real conversation storage instead of a flat query
+log -- each question lives inside a conversation, conversations persist
+across sessions, and you can switch between them, same as a normal chat app.
 """
 
 import glob
@@ -59,21 +58,128 @@ def get_chroma_collection():
     )
 
 
+# --- Conversation storage --------------------------------------------------
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS query_log (
+        CREATE TABLE IF NOT EXISTS conversations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT, query TEXT, grounded INTEGER, best_distance REAL,
-            model_used TEXT, est_cost_usd REAL, latency_ms REAL, answer TEXT,
-            sources TEXT, category TEXT
+            title TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER,
+            role TEXT,
+            content TEXT,
+            grounded INTEGER,
+            best_distance REAL,
+            model_used TEXT,
+            est_cost_usd REAL,
+            latency_ms REAL,
+            sources TEXT,
+            category TEXT,
+            timestamp TEXT,
+            FOREIGN KEY(conversation_id) REFERENCES conversations(id)
         )
         """
     )
     conn.commit()
     conn.close()
 
+
+def create_conversation(first_message: str) -> int:
+    """A conversation gets created the moment its first message is sent --
+    same as ChatGPT, where clicking 'New chat' doesn't add anything to the
+    sidebar list until you actually send something."""
+    title = first_message.strip()[:48]
+    if len(first_message.strip()) > 48:
+        title += "…"
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "INSERT INTO conversations (title, created_at) VALUES (?, ?)",
+        (title, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conv_id = cur.lastrowid
+    conn.close()
+    return conv_id
+
+
+def list_conversations(limit: int = 40) -> list[dict]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT id, title, created_at FROM conversations ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_messages(conversation_id: int) -> list[dict]:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM messages WHERE conversation_id = ? ORDER BY id ASC",
+        (conversation_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_message(conversation_id: int, role: str, content: str, meta: dict | None = None):
+    meta = meta or {}
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        """INSERT INTO messages
+           (conversation_id, role, content, grounded, best_distance, model_used,
+            est_cost_usd, latency_ms, sources, category, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            conversation_id, role, content,
+            int(bool(meta.get("grounded"))) if "grounded" in meta else None,
+            meta.get("best_distance"), meta.get("model_used"),
+            meta.get("est_cost_usd"), meta.get("latency_ms"),
+            json.dumps(meta.get("sources", [])), meta.get("category"),
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def export_all_messages_csv() -> str:
+    """Returns the full message history across all conversations as CSV text."""
+    import csv
+    import io
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """SELECT c.title as conversation, m.role, m.content, m.grounded,
+                  m.model_used, m.est_cost_usd, m.latency_ms, m.category, m.timestamp
+           FROM messages m JOIN conversations c ON m.conversation_id = c.id
+           ORDER BY m.id ASC"""
+    ).fetchall()
+    conn.close()
+
+    buffer = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(buffer, fieldnames=rows[0].keys())
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(dict(r))
+    return buffer.getvalue()
+
+
+# --- Document ingestion -----------------------------------------------------
 
 def chunk_text(text: str, max_chars: int = 600) -> list[str]:
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
@@ -91,16 +197,11 @@ def chunk_text(text: str, max_chars: int = 600) -> list[str]:
 
 
 def ingest_text(filename: str, text: str, category: str, replace_existing: bool = True) -> int:
-    """Chunk and add one document's text to the collection, tagged with a
-    category so it can be filtered on later. Used both for the built-in
-    docs/ folder and for anything a user uploads at runtime."""
     collection = get_chroma_collection()
-
     if replace_existing:
         existing = collection.get(where={"source": filename})
         if existing["ids"]:
             collection.delete(ids=existing["ids"])
-
     chunks = chunk_text(text)
     if not chunks:
         return 0
@@ -111,8 +212,6 @@ def ingest_text(filename: str, text: str, category: str, replace_existing: bool 
 
 
 def ingest() -> int:
-    """Load every .md file in docs/ as a built-in document, category = the
-    filename stem (pricing, security, sla, ...)."""
     total = 0
     doc_paths = sorted(glob.glob(str(DOCS_DIR / "*.md")))
     for filepath in doc_paths:
@@ -130,6 +229,8 @@ def list_categories() -> list[str]:
     cats = sorted({m.get("category", "uploaded") for m in data["metadatas"]})
     return cats
 
+
+# --- Core pipeline -----------------------------------------------------
 
 class GroundedRouter:
     def __init__(self, api_key: str | None = None):
@@ -196,15 +297,13 @@ class GroundedRouter:
             grounded = best_distance <= threshold
 
         if not grounded:
-            result = {
+            return {
                 "query": query, "grounded": False, "generation_failed": False,
                 "answer": "I don't have enough information in the knowledge base to answer that confidently, so I'm not going to guess.",
                 "sources": [], "model_used": None, "best_distance": best_distance,
                 "est_cost_usd": 0.0, "latency_ms": (time.time() - start) * 1000,
                 "category": category or "All",
             }
-            self._log(result)
-            return result
 
         context_chunks = [doc for doc, _, _ in retrieved]
         sources = sorted({meta["source"] for _, meta, _ in retrieved})
@@ -219,31 +318,12 @@ class GroundedRouter:
             (approx_tokens / 1000) * MODEL_COST_PER_1K_TOKENS.get(model_name, 0.0)
         )
 
-        result = {
+        return {
             "query": query, "grounded": actually_grounded, "generation_failed": generation_failed,
             "answer": answer_text, "sources": sources, "model_used": model_name,
             "best_distance": best_distance, "est_cost_usd": est_cost,
             "latency_ms": (time.time() - start) * 1000, "category": category or "All",
         }
-        self._log(result)
-        return result
-
-    def _log(self, result: dict):
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute(
-            """INSERT INTO query_log
-               (timestamp, query, grounded, best_distance, model_used,
-                est_cost_usd, latency_ms, answer, sources, category)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                datetime.now(timezone.utc).isoformat(), result["query"],
-                int(bool(result["grounded"])), result["best_distance"],
-                result["model_used"], result["est_cost_usd"], result["latency_ms"],
-                result["answer"], json.dumps(result["sources"]), result["category"],
-            ),
-        )
-        conn.commit()
-        conn.close()
 
 
 if __name__ == "__main__":
