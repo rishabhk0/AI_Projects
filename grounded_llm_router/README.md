@@ -1,5 +1,7 @@
 # Grounded LLM Router
 
+**Live demo: [nimbusstack-router.streamlit.app](https://nimbusstack-router.streamlit.app)**
+
 A support chatbot that answers questions from a document set and refuses to guess when the answer isn't in there. It also picks between a cheap and a strong model depending on how hard the question looks, and logs cost and latency for every call.
 
 I built this after a conversation about job hunting in the German ML market. The feedback was blunt: nobody cares if you can train a model, they want to know if you can ship something and keep it running. So the point here isn't model quality - it's the two things that actually break LLM apps once real users show up.
